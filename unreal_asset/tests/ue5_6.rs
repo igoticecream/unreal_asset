@@ -1,0 +1,38 @@
+use std::io::Cursor;
+
+use unreal_asset::{engine_version::EngineVersion, Asset, Error};
+
+mod shared;
+
+macro_rules! assets_folder {
+    () => {
+        concat!(env!("CARGO_MANIFEST_DIR"), "/tests/assets/ue5_6/")
+    };
+}
+
+const TEST_ASSETS: [(&[u8], &[u8]); 1] = [(
+    include_bytes!(concat!(
+        assets_folder!(),
+        "BP_MapGimmick_TreasureBox_Hook.uasset"
+    )),
+    include_bytes!(concat!(
+        assets_folder!(),
+        "BP_MapGimmick_TreasureBox_Hook.uexp"
+    )),
+)];
+
+#[test]
+fn ue5_6() -> Result<(), Error> {
+    for (asset_data, bulk_data) in TEST_ASSETS {
+        let mut parsed = Asset::new(
+            Cursor::new(asset_data),
+            Some(Cursor::new(bulk_data)),
+            EngineVersion::VER_UE5_6,
+            None,
+        )?;
+        shared::verify_binary_equality(asset_data, Some(bulk_data), &mut parsed)?;
+        shared::verify_all_exports_parsed(&parsed);
+    }
+
+    Ok(())
+}
