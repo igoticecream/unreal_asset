@@ -696,6 +696,30 @@ pub enum ObjectVersionUE5 {
     /// Added bulk/data resource table
     DATA_RESOURCES,
 
+    /// Added script serialization offset to the export table entries for saved, versioned packages
+    SCRIPT_SERIALIZATION_OFFSET,
+
+    /// Introduce TypeName to FPropertyTag and allow overridable serialization
+    PROPERTY_TAG_EXTENSION_AND_OVERRIDABLE_SERIALIZATION,
+
+    /// Introduce FPropertyTag complete type name
+    PROPERTY_TAG_COMPLETE_TYPE_NAME,
+
+    /// Added package build dependencies to the asset registry
+    ASSETREGISTRY_PACKAGEBUILDDEPENDENCIES,
+
+    /// Added metadata serialization offset to the package summary
+    METADATA_SERIALIZATION_OFFSET,
+
+    /// Added verse cell import/export tables to the package summary
+    VERSE_CELLS,
+
+    /// Replaced the package guid with a saved package hash
+    PACKAGE_SAVED_HASH,
+
+    /// Changed shadow serialization for OS subobjects
+    OS_SUB_OBJECT_SHADOW_SERIALIZATION,
+
     /// -----<new versions can be added before this line>-------------------------------------------------
     AUTOMATIC_VERSION,
     /// Automatic version plus one

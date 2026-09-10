@@ -369,6 +369,9 @@ pub struct Asset<C: Read + Seek> {
     pub generations: Vec<GenerationInfo>,
     /// Asset guid
     pub package_guid: Guid,
+    /// Saved package hash, replaces the asset guid since [`ObjectVersionUE5::PACKAGE_SAVED_HASH`]
+    #[container_ignore]
+    pub saved_hash: [u8; 20],
     /// Recorded engine version
     #[container_ignore]
     pub engine_version_recorded: FEngineVersion,
@@ -395,6 +398,16 @@ pub struct Asset<C: Read + Seek> {
     soft_object_paths_count: i32,
     /// Names offset
     soft_object_paths_offset: i32,
+    /// Cell export count
+    cell_export_count: i32,
+    /// Cell export offset
+    cell_export_offset: i32,
+    /// Cell import count
+    cell_import_count: i32,
+    /// Cell import offset
+    cell_import_offset: i32,
+    /// Metadata offset
+    metadata_offset: i32,
     /// Gatherable text data count
     gatherable_text_data_count: i32,
     /// Gatherable text data offset
@@ -481,6 +494,7 @@ impl<'a, C: Read + Seek> Asset<C> {
             legacy_file_version: 0,
             generations: Vec::new(),
             package_guid: Guid::default(),
+            saved_hash: [0u8; 20],
             engine_version_recorded: FEngineVersion::unknown(),
             engine_version_compatible: FEngineVersion::unknown(),
             chunk_ids: Vec::new(),
@@ -491,6 +505,11 @@ impl<'a, C: Read + Seek> Asset<C> {
             name_offset: 0,
             soft_object_paths_count: 0,
             soft_object_paths_offset: 0,
+            cell_export_count: 0,
+            cell_export_offset: 0,
+            cell_import_count: 0,
+            cell_import_offset: 0,
+            metadata_offset: 0,
             gatherable_text_data_count: 0,
             gatherable_text_data_offset: 0,
             export_offset: 0,
@@ -584,6 +603,16 @@ impl<'a, C: Read + Seek> Asset<C> {
         // read file license version
         self.asset_data.summary.file_licensee_version = self.read_i32::<LE>()?;
 
+        // since PACKAGE_SAVED_HASH the saved hash and header offset precede the custom versions
+        let has_saved_hash =
+            self.get_object_version_ue5() >= ObjectVersionUE5::PACKAGE_SAVED_HASH;
+        if has_saved_hash {
+            let mut saved_hash = [0u8; 20];
+            self.read_exact(&mut saved_hash)?;
+            self.saved_hash = saved_hash;
+            self.header_offset = self.read_i32::<LE>()?;
+        }
+
         // read custom versions container
         if self.legacy_file_version <= -2 {
             // TODO: support for enum-based custom versions
@@ -595,7 +624,9 @@ impl<'a, C: Read + Seek> Asset<C> {
         }
 
         // read header offset
-        self.header_offset = self.read_i32::<LE>()?;
+        if !has_saved_hash {
+            self.header_offset = self.read_i32::<LE>()?;
+        }
 
         // read folder name
         self.folder_name = self
@@ -626,6 +657,15 @@ impl<'a, C: Read + Seek> Asset<C> {
         self.export_offset = self.read_i32::<LE>()?;
         self.asset_data.summary.import_count = self.read_i32::<LE>()?;
         self.import_offset = self.read_i32::<LE>()?;
+        if self.get_object_version_ue5() >= ObjectVersionUE5::VERSE_CELLS {
+            self.cell_export_count = self.read_i32::<LE>()?;
+            self.cell_export_offset = self.read_i32::<LE>()?;
+            self.cell_import_count = self.read_i32::<LE>()?;
+            self.cell_import_offset = self.read_i32::<LE>()?;
+        }
+        if self.get_object_version_ue5() >= ObjectVersionUE5::METADATA_SERIALIZATION_OFFSET {
+            self.metadata_offset = self.read_i32::<LE>()?;
+        }
         self.depends_offset = self.read_i32::<LE>()?;
         if self.asset_data.object_version >= ObjectVersion::VER_UE4_ADD_STRING_ASSET_REFERENCES_MAP
         {
@@ -637,8 +677,10 @@ impl<'a, C: Read + Seek> Asset<C> {
         }
         self.thumbnail_table_offset = self.read_i32::<LE>()?;
 
-        // read guid
-        self.package_guid = self.raw_reader.read_guid()?;
+        // read guid, replaced by the saved hash since PACKAGE_SAVED_HASH
+        if !has_saved_hash {
+            self.package_guid = self.raw_reader.read_guid()?;
+        }
 
         // raed generations
         let generations_count = self.read_i32::<LE>()?;
@@ -1026,6 +1068,15 @@ impl<'a, C: Read + Seek> Asset<C> {
         }
 
         cursor.write_i32::<LE>(self.asset_data.summary.file_licensee_version)?;
+
+        // since PACKAGE_SAVED_HASH the saved hash and header offset precede the custom versions
+        let has_saved_hash =
+            self.get_object_version_ue5() >= ObjectVersionUE5::PACKAGE_SAVED_HASH;
+        if has_saved_hash {
+            cursor.write_all(&self.saved_hash)?;
+            cursor.write_i32::<LE>(asset_header.header_offset)?;
+        }
+
         if self.legacy_file_version <= -2 {
             match self.asset_data.summary.unversioned {
                 true => cursor.write_i32::<LE>(0)?,
@@ -1039,7 +1090,9 @@ impl<'a, C: Read + Seek> Asset<C> {
             };
         }
 
-        cursor.write_i32::<LE>(asset_header.header_offset)?;
+        if !has_saved_hash {
+            cursor.write_i32::<LE>(asset_header.header_offset)?;
+        }
         cursor.write_fstring(Some(&self.folder_name))?;
         cursor.write_u32::<LE>(self.asset_data.summary.package_flags.bits())?;
         cursor.write_i32::<LE>(self.name_map.get_ref().get_name_map_index_list().len() as i32)?;
@@ -1059,6 +1112,15 @@ impl<'a, C: Read + Seek> Asset<C> {
         cursor.write_i32::<LE>(asset_header.export_offset)?;
         cursor.write_i32::<LE>(self.imports.len() as i32)?;
         cursor.write_i32::<LE>(asset_header.import_offset)?;
+        if self.get_object_version_ue5() >= ObjectVersionUE5::VERSE_CELLS {
+            cursor.write_i32::<LE>(self.cell_export_count)?;
+            cursor.write_i32::<LE>(asset_header.depends_offset)?;
+            cursor.write_i32::<LE>(self.cell_import_count)?;
+            cursor.write_i32::<LE>(asset_header.depends_offset)?;
+        }
+        if self.get_object_version_ue5() >= ObjectVersionUE5::METADATA_SERIALIZATION_OFFSET {
+            cursor.write_i32::<LE>(self.metadata_offset)?;
+        }
         cursor.write_i32::<LE>(asset_header.depends_offset)?;
 
         if self.asset_data.object_version >= ObjectVersion::VER_UE4_ADD_STRING_ASSET_REFERENCES_MAP
@@ -1072,7 +1134,9 @@ impl<'a, C: Read + Seek> Asset<C> {
         }
 
         cursor.write_i32::<LE>(self.thumbnail_table_offset)?;
-        cursor.write_guid(&self.package_guid)?;
+        if !has_saved_hash {
+            cursor.write_guid(&self.package_guid)?;
+        }
         cursor.write_i32::<LE>(self.generations.len() as i32)?;
 
         for _ in 0..self.generations.len() {
@@ -1149,6 +1213,7 @@ impl<'a, C: Read + Seek> Asset<C> {
     /// This is useful when copying export from one asset into another
     /// This will automatically figure out every new FName and add them to the name map
     pub fn rebuild_name_map(&mut self) {
+        let names_before = self.name_map.get_ref().get_name_map_index_list().len();
         let mut current_name_map = self.name_map.clone();
         self.traverse_fnames(&mut |mut name| {
             let content = name.get_owned_content();
@@ -1168,6 +1233,14 @@ impl<'a, C: Read + Seek> Asset<C> {
                 *name_map = current_name_map.clone();
             }
         });
+
+        // names merged in by the rebuild are referenced from export data but get appended past
+        // the recorded boundary, which would leave those indices dangling for any consumer that
+        // trusts it (the zen/iostore name map is truncated to exactly this count), so widen it
+        let names_after = self.name_map.get_ref().get_name_map_index_list().len();
+        if names_after > names_before {
+            self.names_referenced_from_export_data_count = names_after as i32;
+        }
     }
 
     /// Write asset data

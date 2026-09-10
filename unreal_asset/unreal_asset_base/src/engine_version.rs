@@ -84,6 +84,14 @@ pub enum EngineVersion {
     VER_UE5_1,
     /// 5.2
     VER_UE5_2,
+    /// 5.3
+    VER_UE5_3,
+    /// 5.4
+    VER_UE5_4,
+    /// 5.5
+    VER_UE5_5,
+    /// 5.6
+    VER_UE5_6,
 
     /// The newest specified version of the Unreal Engine.
     VER_UE4_AUTOMATIC_VERSION,
@@ -217,6 +225,22 @@ lazy_static! {
             ObjectVersion::VER_UE4_CORRECT_LICENSEE_FLAG,
             EngineVersion::VER_UE5_2
         ),
+        (
+            ObjectVersion::VER_UE4_CORRECT_LICENSEE_FLAG,
+            EngineVersion::VER_UE5_3
+        ),
+        (
+            ObjectVersion::VER_UE4_CORRECT_LICENSEE_FLAG,
+            EngineVersion::VER_UE5_4
+        ),
+        (
+            ObjectVersion::VER_UE4_CORRECT_LICENSEE_FLAG,
+            EngineVersion::VER_UE5_5
+        ),
+        (
+            ObjectVersion::VER_UE4_CORRECT_LICENSEE_FLAG,
+            EngineVersion::VER_UE5_6
+        ),
     ]);
     static ref OBJECT_VERSION_TO_ENGINE_VERSION_UE5: Vec<(ObjectVersionUE5, EngineVersion)> =
         Vec::from([
@@ -229,8 +253,24 @@ lazy_static! {
                 EngineVersion::VER_UE5_1
             ),
             (
-                ObjectVersionUE5::AUTOMATIC_VERSION,
+                ObjectVersionUE5::DATA_RESOURCES,
                 EngineVersion::VER_UE5_2
+            ),
+            (
+                ObjectVersionUE5::DATA_RESOURCES,
+                EngineVersion::VER_UE5_3
+            ),
+            (
+                ObjectVersionUE5::PROPERTY_TAG_COMPLETE_TYPE_NAME,
+                EngineVersion::VER_UE5_4
+            ),
+            (
+                ObjectVersionUE5::ASSETREGISTRY_PACKAGEBUILDDEPENDENCIES,
+                EngineVersion::VER_UE5_5
+            ),
+            (
+                ObjectVersionUE5::OS_SUB_OBJECT_SHADOW_SERIALIZATION,
+                EngineVersion::VER_UE5_6
             )
         ]);
 }
