@@ -15,13 +15,15 @@ use crate::Error;
 pub mod array_property;
 pub mod enum_property;
 pub mod map_property;
+pub mod optional_property;
 pub mod set_property;
 pub mod shallow_property;
 pub mod struct_property;
 
 use self::{
     array_property::UsmapArrayPropertyData, enum_property::UsmapEnumPropertyData,
-    map_property::UsmapMapPropertyData, set_property::UsmapSetPropertyData,
+    map_property::UsmapMapPropertyData, optional_property::UsmapOptionalPropertyData,
+    set_property::UsmapSetPropertyData,
     shallow_property::UsmapShallowPropertyData, struct_property::UsmapStructPropertyData,
 };
 
@@ -85,6 +87,12 @@ pub enum EPropertyType {
     EnumProperty,
     /// FieldPath
     FieldPathProperty,
+    /// Optional
+    OptionalProperty,
+    /// Utf8Str
+    Utf8StrProperty,
+    /// AnsiStr
+    AnsiStrProperty,
 
     /// Unknown
     Unknown = 0xFF,
@@ -121,6 +129,9 @@ impl std::fmt::Display for EPropertyType {
             EPropertyType::SetProperty => "SetProperty",
             EPropertyType::EnumProperty => "EnumProperty",
             EPropertyType::FieldPathProperty => "FieldPathProperty",
+            EPropertyType::OptionalProperty => "OptionalProperty",
+            EPropertyType::Utf8StrProperty => "Utf8StrProperty",
+            EPropertyType::AnsiStrProperty => "AnsiStrProperty",
             EPropertyType::Unknown => "Unknown",
         })
     }
@@ -153,6 +164,9 @@ pub enum UsmapPropertyData {
     /// Map
     UsmapMapPropertyData,
 
+    /// Optional
+    UsmapOptionalPropertyData,
+
     /// Shallow
     UsmapShallowPropertyData,
 }
@@ -170,6 +184,7 @@ impl UsmapPropertyData {
             EPropertyType::MapProperty => UsmapMapPropertyData::new(asset)?.into(),
             EPropertyType::SetProperty => UsmapSetPropertyData::new(asset)?.into(),
             EPropertyType::EnumProperty => UsmapEnumPropertyData::new(asset)?.into(),
+            EPropertyType::OptionalProperty => UsmapOptionalPropertyData::new(asset)?.into(),
             _ => UsmapShallowPropertyData {
                 property_type: prop_type,
             }

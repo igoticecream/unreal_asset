@@ -50,6 +50,10 @@ impl<'parent_reader, 'asset, R: ArchiveReader<PackageIndex>>
     /// Read a name from this archive
     pub fn read_name(&mut self) -> Result<String, Error> {
         let index = self.read_i32::<LE>()?;
+        // -1 is used as a "no name" sentinel, e.g. for a schema with no super type
+        if index == -1 {
+            return Ok(String::new());
+        }
         if index < 0 {
             return Err(UsmapError::name_map_index_out_of_range(self.name_map.len(), index).into());
         }

@@ -38,6 +38,12 @@ pub enum EUsmapVersion {
 
     /// Adds package versioning to aid with compatibililty
     PackageVersioning,
+    /// Name lengths are serialized as u16 instead of u8
+    LongFName,
+    /// Enum entry counts are serialized as u16 instead of u8
+    LargeEnums,
+    /// Enum entries carry their explicit value alongside the name
+    EnumValues,
 
     /// Latest
     Latest,
@@ -111,8 +117,9 @@ impl UsmapSchema {
                 property.array_index = j as u16;
                 property.schema_index += j as u16;
 
+                // keyed by array index because lookups are done by duplication index
                 properties.insert(
-                    (property.name.clone(), property.schema_index as u32),
+                    (property.name.clone(), property.array_index as u32),
                     property,
                 );
             }
@@ -161,7 +168,7 @@ pub struct Usmap {
 }
 
 impl Usmap {
-    const ASSET_MAGIC: u16 = u16::from_be_bytes([0xc4, 0x30]);
+    const ASSET_MAGIC: u16 = u16::from_le_bytes([0xc4, 0x30]);
 
     /// Gets usmap property for a given property name + ancestry
     pub fn get_property(
@@ -249,10 +256,12 @@ impl Usmap {
         }
 
         let usmap_version = EUsmapVersion::try_from(reader.read_u8()?)?;
+        self.version = usmap_version;
 
         let mut has_versioning = usmap_version >= EUsmapVersion::PackageVersioning;
         if has_versioning {
-            has_versioning = reader.read_bool()?;
+            // serialized as a 4 byte bool
+            has_versioning = reader.read_i32::<LE>()? != 0;
         }
 
         if has_versioning {
@@ -331,9 +340,13 @@ impl Usmap {
             NameMap::new(),
         );
 
+        let long_fname = self.version >= EUsmapVersion::LongFName;
         self.name_map = reader.read_array(|reader| {
-            let name_length = reader.read_u8()?;
-            let mut buf = vec![0u8; name_length as usize - 1];
+            let name_length = match long_fname {
+                true => reader.read_u16::<LE>()?,
+                false => reader.read_u8()? as u16,
+            };
+            let mut buf = vec![0u8; name_length as usize];
             reader.read_exact(&mut buf)?;
             Ok(String::from_utf8(buf)?)
         })?;
@@ -343,13 +356,23 @@ impl Usmap {
 
         let mut reader = UsmapReader::new(&mut reader, &self.name_map, &self.custom_versions);
 
+        let large_enums = self.version >= EUsmapVersion::LargeEnums;
+        let enum_values = self.version >= EUsmapVersion::EnumValues;
         for _ in 0..enum_len {
             let enum_name = reader.read_name()?;
 
-            let enum_names_len = reader.read_u8()?;
+            let enum_names_len = match large_enums {
+                true => reader.read_u16::<LE>()?,
+                false => reader.read_u8()? as u16,
+            };
             let mut enum_names = Vec::with_capacity(enum_names_len as usize);
 
             for _ in 0..enum_names_len {
+                // entries are stored in declaration order, so the explicit value is redundant
+                // for the positional lookup done here
+                if enum_values {
+                    reader.read_i64::<LE>()?;
+                }
                 enum_names.push(reader.read_name()?);
             }
 
@@ -366,7 +389,9 @@ impl Usmap {
 
         // read extensions
 
-        if reader.data_length()? > reader.position() {
+        // since EnumValues trailing data uses a tagged CEXT container holding optional
+        // metadata (module paths); none of it is needed to resolve property schemas
+        if !enum_values && reader.data_length()? > reader.position() {
             self.extension_version = UsmapExtensionVersion::from_bits(reader.read_u32::<LE>()?)
                 .ok_or_else(|| Error::invalid_file("Invalid extension version".to_string()))?;
 
