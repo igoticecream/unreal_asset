@@ -254,8 +254,10 @@ impl ArrayProperty {
         let begin = asset.position();
         asset.write_i32::<LE>(self.value.len() as i32)?;
 
+        // mirrors the read path: unversioned arrays of structs carry no inner tag
         if array_type.as_ref().is_some_and(|ty| ty == "StructProperty")
             && serialize_structs_differently
+            && !asset.has_unversioned_properties()
         {
             let property: &StructProperty = match !self.value.is_empty() {
                 true => match &self.value[0] {

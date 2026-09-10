@@ -3,7 +3,7 @@
 
 //! Unreal asset properties
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::io::SeekFrom;
@@ -538,13 +538,14 @@ impl Property {
                 .ok_or_else(PropertyError::no_mappings)?;
             let parent_name = ancestry.get_parent().ok_or_else(PropertyError::no_parent)?;
 
-            loop {
-                let current_fragment = header.fragments[header.current_fragment_index];
-                if header.unversioned_property_index > current_fragment.get_last_num() as usize {
-                    break;
-                }
-
+            // advance past any fragments the current property index has already run off the end of
+            while header.unversioned_property_index as i32
+                > header.fragments[header.current_fragment_index].get_last_num()
+            {
                 header.current_fragment_index += 1;
+                if header.current_fragment_index >= header.fragments.len() {
+                    return Ok(None);
+                }
                 header.unversioned_property_index =
                     header.fragments[header.current_fragment_index].first_num as usize;
             }
@@ -613,7 +614,8 @@ impl Property {
             &property_type,
             name,
             ancestry,
-            include_header,
+            // unversioned properties carry no property tag, so there is no guid header to read
+            include_header && !asset.has_unversioned_properties(),
             length as i64,
             0,
             duplication_index,
@@ -1333,6 +1335,12 @@ impl Property {
         asset: &mut Writer,
         include_header: bool,
     ) -> Result<usize, Error> {
+        // unversioned properties are located by the unversioned header, so they are written
+        // as a bare value with no tag and no property guid
+        if asset.has_unversioned_properties() {
+            return property.write(asset, false);
+        }
+
         asset.write_fname(&property.get_name())?;
 
         let property_serialized_name = property.to_serialized_name();
@@ -1488,8 +1496,10 @@ pub fn generate_unversioned_header<W: ArchiveWriter<impl PackageIndexTrait>>(
 
     let mut properties_to_process = HashSet::new();
     let mut zero_properties: HashSet<u32> = HashSet::new();
+    // global schema index -> position in `properties`
+    let mut properties_by_global_index: HashMap<u32, usize> = HashMap::new();
 
-    for property in properties {
+    for (position, property) in properties.iter().enumerate() {
         let Some((_, global_index)) = mappings.get_property_with_duplication_index(
             &property.get_name(),
             property.get_ancestry(),
@@ -1507,20 +1517,22 @@ pub fn generate_unversioned_header<W: ArchiveWriter<impl PackageIndexTrait>>(
         first_global_index = first_global_index.min(global_index);
         last_global_index = last_global_index.max(global_index);
         properties_to_process.insert(global_index);
+        properties_by_global_index.insert(global_index, position);
     }
 
     // Sort properties and generate header fragments
     let mut sorted_properties = Vec::new();
 
     let mut fragments: Vec<UnversionedHeaderFragment> = Vec::new();
-    let mut last_num_before_fragment = 0;
+    // index of the last property covered so far, -1 until the first fragment is emitted
+    let mut last_num_before_fragment: i64 = -1;
 
     if !properties_to_process.is_empty() {
         loop {
             let mut has_zeros = false;
 
             // Find next contiguous properties chunk
-            let mut start_index = last_num_before_fragment;
+            let mut start_index = (last_num_before_fragment + 1) as u32;
             while !properties_to_process.contains(&start_index) && start_index <= last_global_index
             {
                 start_index += 1;
@@ -1537,13 +1549,16 @@ pub fn generate_unversioned_header<W: ArchiveWriter<impl PackageIndexTrait>>(
                     has_zeros = true;
                 }
 
-                // todo: clone might not be needed
-                sorted_properties.push(properties[end_index as usize].clone());
+                // end_index is a global schema index, so it has to be mapped back to the
+                // property it came from rather than used to index `properties` directly
+                if let Some(position) = properties_by_global_index.get(&end_index) {
+                    sorted_properties.push(properties[*position].clone());
+                }
                 end_index += 1;
             }
 
             // Create extra fragments for this chunk
-            let mut skip_num = start_index - last_num_before_fragment - 1;
+            let mut skip_num = (start_index as i64 - last_num_before_fragment - 1) as u32;
             let mut value_num = (end_index - 1) - start_index + 1;
 
             while skip_num > i8::MAX as u32 {
@@ -1577,7 +1592,7 @@ pub fn generate_unversioned_header<W: ArchiveWriter<impl PackageIndexTrait>>(
             };
 
             fragments.push(fragment);
-            last_num_before_fragment = end_index - 1;
+            last_num_before_fragment = end_index as i64 - 1;
         }
     } else {
         fragments.push(parent_name.get_content(|name| UnversionedHeaderFragment {
