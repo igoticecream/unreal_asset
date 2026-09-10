@@ -439,7 +439,11 @@ pub struct Asset<C: Read + Seek> {
     /// Preload dependency offset
     preload_dependency_offset: i32,
     /// Amount of names referenced from exports
-    names_referenced_from_export_data_count: i32,
+    ///
+    /// Names at or past this index are only reachable from the package summary. The zen/iostore
+    /// name map is truncated to exactly this count, so every name used by export data has to fall
+    /// below it or it gets dropped while the export data still refers to it.
+    pub names_referenced_from_export_data_count: i32,
     /// TOC payload offset
     payload_toc_offset: i64,
     /// Data resource offset
