@@ -1,6 +1,6 @@
 use std::io::Cursor;
 
-use unreal_asset::{engine_version::EngineVersion, Asset, Error};
+use unreal_asset::{engine_version::EngineVersion, reader::ArchiveTrait, Asset, Error};
 
 mod shared;
 
@@ -31,7 +31,16 @@ fn ue5_6() -> Result<(), Error> {
             None,
         )?;
         shared::verify_binary_equality(asset_data, Some(bulk_data), &mut parsed)?;
-        shared::verify_all_exports_parsed(&parsed);
+
+        // this fixture is cooked with unversioned properties, so with no mappings passed there is
+        // no schema to classify an export against and every one of them falls back to RawExport --
+        // round-tripping those untouched is what the binary equality above actually proves
+        assert!(parsed.has_unversioned_properties());
+        assert!(
+            !shared::verify_all_exports_parsed(&parsed),
+            "an export classified without mappings, so this is no longer the unversioned fixture \
+             and the check above has stopped covering the raw fallback"
+        );
     }
 
     Ok(())

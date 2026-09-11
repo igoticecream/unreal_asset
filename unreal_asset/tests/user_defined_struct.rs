@@ -31,7 +31,7 @@ fn user_defined_struct() -> Result<(), Error> {
             None,
         )?;
         shared::verify_binary_equality(asset_data, Some(bulk_data), &mut parsed)?;
-        shared::verify_all_exports_parsed(&parsed);
+        assert!(shared::verify_all_exports_parsed(&parsed));
         let uds = parsed
             .asset_data
             .exports
