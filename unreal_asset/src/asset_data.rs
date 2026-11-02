@@ -349,6 +349,9 @@ pub trait ExportReaderTrait<Index: PackageIndexTrait>:
                 "StringTable" => StringTableExport::from_base(&base_export, self)?.into(),
                 "Enum" | "UserDefinedEnum" => EnumExport::from_base(&base_export, self)?.into(),
                 "Function" => FunctionExport::from_base(&base_export, self)?.into(),
+                // natively serialized (the movie scene evaluation trees in EntityComponentField):
+                // parsed as properties it reads misaligned into garbage lengths, so keep it as is
+                "MovieSceneCompiledData" => RawExport::from_base(base_export.clone(), self)?.into(),
                 _ => {
                     if export_class_type.ends_with("DataTable") {
                         DataTableExport::from_base(&base_export, self)?.into()
